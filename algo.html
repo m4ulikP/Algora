@@ -5,6 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Algora — Government Transparency Platform</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link
     href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap"
     rel="stylesheet">
@@ -154,7 +155,7 @@
     .corner-bl {
       bottom: 32px;
       left: 32px;
-      border-bottom: 1px solid #ff2d2d66;
+      border-bottom: 1px solid #ff2g2d66;
       border-left: 1px solid #ff2d2d66;
     }
 
@@ -2413,6 +2414,7 @@
             <div class="auth-field"><label class="auth-label">Government ID</label><input class="auth-input" type="text"
                 placeholder="Enter your Gov ID"></div>
           </div>
+          <div id="loginError" style="display:none;color:#ff4444;font-size:13px;font-family:'DM Mono',monospace;margin-bottom:12px;padding:10px 14px;background:rgba(255,68,68,0.08);border:1px solid rgba(255,68,68,0.2);border-radius:8px;"></div>
           <button class="auth-btn" onclick="handleLogin()">Log In →</button>
         </div>
         <div class="auth-footer" id="authFooter">Already have an account? <a onclick="switchTab('login')">Log in
@@ -2970,11 +2972,19 @@
 
   <script>
     // ── STATE ─────────────────────────────────
+<<<<<<< main
     const { createClient } = supabase;
     const supabaseClient = createClient(
       'https://cwwnywavybkxnfhxscyf.supabase.co',
       'sb_publishable_45TLYE7ZjA0yNQvDpU-HEA_zf3Mcht_'
     );
+=======
+    const { createClient } = supabase
+    const supabaseClient = createClient(
+     'https://cwwnywavybkxnfhxscyf.supabase.co',
+     'sb_publishable_45TLYE7ZjA0yNQvDpU-HEA_zf3Mcht_'
+)
+>>>>>>> main
     let currentUser = null;
     // ── OTP SYSTEM ─────────────────────────────────
     let otpTimerInterval = null;
@@ -3259,6 +3269,7 @@
       document.getElementById('authFooter').innerHTML = s ? "Already have an account? <a onclick=\"switchTab('login')\">Log in here</a>" : "Don't have an account? <a onclick=\"switchTab('signup')\">Sign up here</a>";
     }
     function formatAadhar(inp) { let v = inp.value.replace(/\D/g, '').substring(0, 12); inp.value = v.match(/.{1,4}/g)?.join('-') || v; }
+<<<<<<< main
     async function handleSignup() {
       const name = document.querySelector('#formSignup input[type="text"]').value.trim();
       const phone = document.querySelector('#formSignup .phone-input').value.trim();
@@ -3328,6 +3339,76 @@
       err.style.display = 'none';
       enterDashboard();
     }
+=======
+  async function handleSignup() {
+  const name = document.querySelector('#formSignup input[type="text"]').value.trim();
+  const phone = document.querySelector('#formSignup .phone-input').value.trim();
+  const aadhar = document.querySelectorAll('#formSignup input[type="text"]')[1]?.value.trim();
+  const password = document.getElementById('signupPw').value.trim();
+
+  if (!name || !phone || !aadhar || !password) {
+    alert('Please fill all fields.'); return;
+  }
+
+  const { data, error } = await supabaseClient.auth.signUp({
+    email: `${phone}@algora.com`,
+    password: password
+  })
+
+  if (error) {
+    alert('Registration failed: ' + error.message); return;
+  }
+
+  await supabaseClient.from('users').insert({
+    id: data.user.id,
+    name: name,
+    phone: phone,
+    aadhaar: aadhar,
+    role: selectedRole
+  })
+
+  currentUser = { name, role: selectedRole };
+  enterDashboard();
+}
+    async function handleLogin() {
+  const phone = document.querySelector('#formLogin .phone-input').value.trim();
+  const password = document.getElementById('loginPw').value.trim();
+  const err = document.getElementById('loginError');
+
+  err.style.display = 'none';
+
+  if (!phone || !password) {
+    err.style.display = 'block';
+    err.textContent = '❌ Please enter your phone number and password.';
+    return;
+  }
+
+  const { data, error } = await supabaseClient.auth.signInWithPassword({
+    email: `${phone}@algora.com`,
+    password: password
+  })
+
+  if (error) {
+    err.style.display = 'block';
+    err.textContent = '❌ Wrong phone number or password.';
+    return;
+  }
+
+  const { data: userData } = await supabaseClient
+    .from('users')
+    .select('name, role')
+    .eq('id', data.user.id)
+    .single()
+
+  currentUser = {
+    name: userData?.name || 'User',
+    role: userData?.role || loginRole
+  }
+
+  err.style.display = 'none';
+  enterDashboard();
+}
+>>>>>>> main
     function enterDashboard() {
       document.getElementById('page-landing').style.display = 'none';
       document.getElementById('page-auth').style.display = 'none';
@@ -3385,6 +3466,7 @@
 
     // ── LOGOUT ────────────────────────────────
     async function confirmLogout() {
+<<<<<<< main
       const pw = document.getElementById('logoutPw').value.trim();
       const err = document.getElementById('logoutError');
 
@@ -3422,6 +3504,45 @@
       document.getElementById('logoutPw').value = '';
       currentUser = null;
     }
+=======
+  const pw = document.getElementById('logoutPw').value.trim();
+  const err = document.getElementById('logoutError');
+
+  if (!pw) {
+    err.style.display = 'block';
+    err.textContent = '❌ Please enter your password.';
+    return;
+  }
+
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  if (!user) {
+    err.style.display = 'block';
+    err.textContent = '❌ No user session found.';
+    return;
+  }
+
+  const { error } = await supabaseClient.auth.signInWithPassword({
+    email: user.email,
+    password: pw
+  });
+
+  if (error) {
+    err.style.display = 'block';
+    err.textContent = '❌ Incorrect password. Try again.';
+    return;
+  }
+
+  await supabaseClient.auth.signOut();
+  err.style.display = 'none';
+  closeAll();
+  document.getElementById('page-dashboard').style.display = 'none';
+  document.getElementById('page-official').style.display = 'none';
+  document.getElementById('page-landing').style.display = 'flex';
+  document.getElementById('page-auth').style.display = 'block';
+  document.getElementById('logoutPw').value = '';
+  currentUser = null;
+}
+>>>>>>> main
     function togglePw(id, btnId) { const i = document.getElementById(id), b = document.getElementById(btnId); i.type = i.type === 'password' ? 'text' : 'password'; b.textContent = i.type === 'password' ? '👁' : '🙈'; }
     let notifsOn = true;
     function toggleNotifs() { notifsOn = !notifsOn; document.getElementById('masterToggle').style.background = notifsOn ? 'var(--red)' : '#333'; document.getElementById('masterThumb').style.left = notifsOn ? '25px' : '3px'; const it = document.getElementById('notifItems'); it.style.opacity = notifsOn ? '1' : '0.3'; it.style.pointerEvents = notifsOn ? 'all' : 'none'; }
