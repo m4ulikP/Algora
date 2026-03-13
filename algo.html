@@ -12,11 +12,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
-    const SUPABASE_URL = 'https://YOUR_PROJECT_ID.supabase.co';
-    const SUPABASE_ANON_KEY = 'YOUR_ANON_PUBLIC_KEY';
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  </script>
-  <script>
     const firebaseConfig = {
       apiKey: "AIzaSyAQz166fs2F5SQrXkJzUBPtv8jEYH9BWYA",
       authDomain: "otp-verification-f8fff.firebaseapp.com",
@@ -2936,7 +2931,7 @@
           <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:4px;">Warning — You are logging out
           </div>
           <div style="font-size:11px;color:#aa5555;font-family:'DM Mono',monospace;line-height:1.7;">Your session will
-            be terminated. You will need to log in again with your phone number and password.</div>
+            be terminated. You will need to re-verify with Aadhar OTP to log back in.</div>
         </div>
       </div>
       <div style="padding:28px 32px;display:flex;flex-direction:column;gap:20px;">
@@ -2975,6 +2970,11 @@
 
   <script>
     // ── STATE ─────────────────────────────────
+    const { createClient } = supabase;
+    const supabaseClient = createClient(
+      'https://cwwnywavybkxnfhxscyf.supabase.co',
+      'sb_publishable_45TLYE7ZjA0yNQvDpU-HEA_zf3Mcht_'
+    );
     let currentUser = null;
     // ── OTP SYSTEM ─────────────────────────────────
     let otpTimerInterval = null;
@@ -3023,29 +3023,22 @@
       btn.classList.remove('loading');
       btn.disabled = false;
 
-      // Show overlay FIRST so recaptcha-container is visible in the DOM
       document.getElementById('otpOverlay').style.display = 'flex';
       setupOtpBoxes();
 
-      // Give the DOM a moment to render before initialising reCAPTCHA
-      setTimeout(() => {
-        freshRecaptcha();
-        sendOtpToPhone(fullPhone)
-          .then(result => {
-            window.confirmationResult = result;
-            startOtpTimer(30);
-            setTimeout(() => document.getElementById('otp0').focus(), 150);
-          })
-          .catch(err => {
-            // Reset resend link so user can try again immediately
-            const resendLink = document.getElementById('resendLink');
-            resendLink.classList.remove('disabled');
-            document.getElementById('otpTimer').style.display = 'none';
-            clearInterval(otpTimerInterval);
-            document.getElementById('otpErrorMsg').textContent = '❌ Failed to send OTP: ' + err.message;
-            document.getElementById('otpErrorMsg').style.display = 'block';
-          });
-      }, 100);
+      // Always create a fresh reCAPTCHA before sending
+      freshRecaptcha();
+
+      sendOtpToPhone(fullPhone)
+        .then(result => {
+          window.confirmationResult = result;
+          startOtpTimer(30);
+          setTimeout(() => document.getElementById('otp0').focus(), 150);
+        })
+        .catch(err => {
+          alert('Failed to send OTP: ' + err.message);
+          closeOtp();
+        });
     }
 
     function closeOtp() {
@@ -3181,10 +3174,7 @@
     }
 
     function resendOtp() {
-      // Disable resend immediately to prevent double-clicks
-      const resendLink = document.getElementById('resendLink');
-      resendLink.classList.add('disabled');
-
+      showResendToast();
       for (let i = 0; i < 6; i++) {
         const box = document.getElementById('otp' + i);
         box.value = ''; box.classList.remove('filled', 'error');
@@ -3194,24 +3184,15 @@
       document.getElementById('otpVerifyBtn').classList.remove('loading');
       document.getElementById('otpVerifyBtn').disabled = false;
 
-      setTimeout(() => {
-        freshRecaptcha();
-        const phone = '+91' + document.getElementById('otpPhoneDisplay').textContent.replace(/\D/g, '');
-        sendOtpToPhone(phone)
-          .then(result => {
-            window.confirmationResult = result;
-            startOtpTimer(30);
-            showResendToast();
-            setTimeout(() => document.getElementById('otp0').focus(), 150);
-          })
-          .catch(err => {
-            // Re-enable resend on failure
-            resendLink.classList.remove('disabled');
-            document.getElementById('otpTimer').style.display = 'none';
-            document.getElementById('otpErrorMsg').textContent = '❌ Resend failed: ' + err.message;
-            document.getElementById('otpErrorMsg').style.display = 'block';
-          });
-      }, 100);
+      freshRecaptcha();
+      const phone = '+91' + document.getElementById('otpPhoneDisplay').textContent.replace(/\D/g, '');
+      sendOtpToPhone(phone)
+        .then(result => {
+          window.confirmationResult = result;
+          startOtpTimer(30);
+          setTimeout(() => document.getElementById('otp0').focus(), 150);
+        })
+        .catch(err => alert('Resend failed: ' + err.message));
     }
 
     function showResendToast() {
@@ -3278,23 +3259,73 @@
       document.getElementById('authFooter').innerHTML = s ? "Already have an account? <a onclick=\"switchTab('login')\">Log in here</a>" : "Don't have an account? <a onclick=\"switchTab('signup')\">Sign up here</a>";
     }
     function formatAadhar(inp) { let v = inp.value.replace(/\D/g, '').substring(0, 12); inp.value = v.match(/.{1,4}/g)?.join('-') || v; }
-    function handleSignup() {
+    async function handleSignup() {
       const name = document.querySelector('#formSignup input[type="text"]').value.trim();
       const phone = document.querySelector('#formSignup .phone-input').value.trim();
       const aadhar = document.querySelectorAll('#formSignup input[type="text"]')[1]?.value.trim();
-      if (!name || !phone || !aadhar) { alert('Please fill all fields.'); return; }
-      const formattedPhone = phone.replace(/(\d{5})(\d{5})/, '$1-$2');
-      openOtp(formattedPhone, () => {
-        currentUser = { name, role: selectedRole };
-        enterDashboard();
+      const password = document.getElementById('signupPw').value.trim();
+
+      if (!name || !phone || !aadhar || !password) {
+        alert('Please fill all fields.'); return;
+      }
+
+      const { data, error } = await supabaseClient.auth.signUp({
+        email: `${phone}@algora.com`,
+        password: password
       });
+
+      if (error) {
+        alert('Registration failed: ' + error.message); return;
+      }
+
+      await supabaseClient.from('users').insert({
+        id: data.user.id,
+        name: name,
+        phone: phone,
+        aadhaar: aadhar,
+        role: selectedRole
+      });
+
+      currentUser = { name, role: selectedRole };
+      enterDashboard();
     }
-    function handleLogin() {
-      const pw = document.getElementById('loginPw').value.trim();
+
+    async function handleLogin() {
       const phone = document.querySelector('#formLogin .phone-input').value.trim();
-      if (!pw) { alert('Please enter your password.'); return; }
-      if (!phone) { alert('Please enter your phone number.'); return; }
-      currentUser = { name: 'User', role: loginRole };
+      const password = document.getElementById('loginPw').value.trim();
+      const err = document.getElementById('loginError');
+
+      err.style.display = 'none';
+
+      if (!phone || !password) {
+        err.style.display = 'block';
+        err.textContent = '\u274c Please enter your phone number and password.';
+        return;
+      }
+
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email: `${phone}@algora.com`,
+        password: password
+      });
+
+      if (error) {
+        err.style.display = 'block';
+        err.textContent = '\u274c Wrong phone number or password.';
+        return;
+      }
+
+      const { data: userData } = await supabaseClient
+        .from('users')
+        .select('name, role')
+        .eq('id', data.user.id)
+        .single();
+
+      currentUser = {
+        name: userData?.name || 'User',
+        role: userData?.role || loginRole
+      };
+
+      err.style.display = 'none';
       enterDashboard();
     }
     function enterDashboard() {
@@ -3309,6 +3340,7 @@
         document.getElementById('offNavUserName').textContent = currentUser.name;
         document.getElementById('offNavUserId').textContent = 'Gov Official · Multisig Verified ✓';
         initOfficialAlgoraText();
+        initOffNavDropdown();
         renderOfficialDash();
         startBigTxAlerts();
       } else {
@@ -3352,15 +3384,43 @@
     overlays.forEach(id => document.getElementById(id).addEventListener('click', e => { if (e.target === document.getElementById(id)) closeAll(); }));
 
     // ── LOGOUT ────────────────────────────────
-    function confirmLogout() {
-      const pw = document.getElementById('logoutPw').value, err = document.getElementById('logoutError');
-      if (!pw.trim()) { err.style.display = 'block'; err.textContent = '❌ Please enter your password.'; return; }
-      if (pw.length < 4) { err.style.display = 'block'; err.textContent = '❌ Incorrect password. Try again.'; return; }
-      err.style.display = 'none'; closeAll();
+    async function confirmLogout() {
+      const pw = document.getElementById('logoutPw').value.trim();
+      const err = document.getElementById('logoutError');
+
+      if (!pw) {
+        err.style.display = 'block';
+        err.textContent = '❌ Please enter your password.';
+        return;
+      }
+
+      const { data: { user } } = await supabaseClient.auth.getUser();
+      if (!user) {
+        err.style.display = 'block';
+        err.textContent = '❌ No user session found.';
+        return;
+      }
+
+      const { error } = await supabaseClient.auth.signInWithPassword({
+        email: user.email,
+        password: pw
+      });
+
+      if (error) {
+        err.style.display = 'block';
+        err.textContent = '❌ Incorrect password. Try again.';
+        return;
+      }
+
+      await supabaseClient.auth.signOut();
+      err.style.display = 'none';
+      closeAll();
       document.getElementById('page-dashboard').style.display = 'none';
+      document.getElementById('page-official').style.display = 'none';
       document.getElementById('page-landing').style.display = 'flex';
       document.getElementById('page-auth').style.display = 'block';
-      document.getElementById('logoutPw').value = ''; currentUser = null;
+      document.getElementById('logoutPw').value = '';
+      currentUser = null;
     }
     function togglePw(id, btnId) { const i = document.getElementById(id), b = document.getElementById(btnId); i.type = i.type === 'password' ? 'text' : 'password'; b.textContent = i.type === 'password' ? '👁' : '🙈'; }
     let notifsOn = true;
@@ -4148,11 +4208,15 @@
     }
 
     // ── OFFICIAL NAV DROPDOWN ─────────────────────
-    const offLogoBtn = document.getElementById('offLogoBtn');
-    const offLogoWrapper = document.getElementById('offLogoWrapper');
-    const offDropdown = document.getElementById('offLogoDropdown');
-    offLogoBtn.addEventListener('click', e => { e.stopPropagation(); offDropdown.classList.toggle('open'); });
-    document.addEventListener('click', e => { if (!offLogoWrapper.contains(e.target)) offDropdown.classList.remove('open'); });
+    // (wired after DOM ready — page-official is rendered after this script block)
+    function initOffNavDropdown() {
+      const offLogoBtn = document.getElementById('offLogoBtn');
+      const offLogoWrapper = document.getElementById('offLogoWrapper');
+      const offDropdown = document.getElementById('offLogoDropdown');
+      if (!offLogoBtn || !offLogoWrapper || !offDropdown) return;
+      offLogoBtn.addEventListener('click', e => { e.stopPropagation(); offDropdown.classList.toggle('open'); });
+      document.addEventListener('click', e => { if (!offLogoWrapper.contains(e.target)) offDropdown.classList.remove('open'); });
+    }
 
     // ── OFFICIAL ALGORA TEXT SCRAMBLE ─────────────
     function initOfficialAlgoraText() {
@@ -4185,22 +4249,7 @@
       if (s === 'pending') { document.getElementById('pendingTxList').scrollIntoView({ behavior: 'smooth' }); }
     }
 
-    // Patch confirmLogout for official page too
-    const _origConfirmLogout = confirmLogout;
-    confirmLogout = function () {
-      const pw = document.getElementById('logoutPw').value;
-      const err = document.getElementById('logoutError');
-      if (!pw.trim()) { err.style.display = 'block'; err.textContent = '❌ Please enter your password.'; return; }
-      if (pw.length < 4) { err.style.display = 'block'; err.textContent = '❌ Incorrect password. Try again.'; return; }
-      err.style.display = 'none';
-      closeAll();
-      document.getElementById('page-dashboard').style.display = 'none';
-      document.getElementById('page-official').style.display = 'none';
-      document.getElementById('page-landing').style.display = 'flex';
-      document.getElementById('page-auth').style.display = 'block';
-      document.getElementById('logoutPw').value = '';
-      currentUser = null;
-    };
+    // confirmLogout is defined above and handles both citizen and official pages
   </script>
 
   <!-- ═══════════════════════════════════════
