@@ -686,7 +686,6 @@
 <script>
 // ── STATE ─────────────────────────────────
 let currentUser = null;
-let audioCtx = null, musicPlaying = false, masterGain = null, audioLocked = false;
 window._officialCache = {}; // stores official data for dashboard lookup
 
 // ── LANDING ───────────────────────────────
@@ -754,16 +753,27 @@ function handleLogin(){
 function enterDashboard(){
   document.getElementById('page-landing').style.display='none';
   document.getElementById('page-auth').style.display='none';
-  document.getElementById('page-dashboard').style.display='block';
-  document.getElementById('navUserName').textContent=currentUser.name;
-  document.getElementById('navUserId').textContent=currentUser.role==='official'?'Gov Official · Verified ✓':'Citizen · Verified ✓';
+  document.getElementById('page-dashboard').style.display='none';
+  document.getElementById('page-official').style.display='none';
   document.getElementById('profileName').textContent=currentUser.name;
   document.getElementById('profileNameInput').value=currentUser.name;
-  initAlgoraText();
-  requestAnimationFrame(()=>setTimeout(buildRadialTree,50));
-  window.addEventListener('resize',buildRadialTree);
-  renderTx('all');
-  startBigTxAlerts();
+  if(currentUser.role==='official'){
+    document.getElementById('page-official').style.display='block';
+    document.getElementById('offNavUserName').textContent=currentUser.name;
+    document.getElementById('offNavUserId').textContent='Gov Official · Multisig Verified ✓';
+    initOfficialAlgoraText();
+    renderOfficialDash();
+    startBigTxAlerts();
+  } else {
+    document.getElementById('page-dashboard').style.display='block';
+    document.getElementById('navUserName').textContent=currentUser.name;
+    document.getElementById('navUserId').textContent='Citizen · Verified ✓';
+    initAlgoraText();
+    requestAnimationFrame(()=>setTimeout(buildRadialTree,50));
+    window.addEventListener('resize',buildRadialTree);
+    renderTx('all');
+    startBigTxAlerts();
+  }
 }
 
 // ── NAV ALGORA ────────────────────────────
@@ -775,9 +785,8 @@ function initAlgoraText(){
   el.addEventListener('mouseenter',()=>{
     let it=0; clearInterval(si);
     si=setInterval(()=>{ el.textContent=orig.split('').map((c,i)=>i<it?orig[i]:chars[Math.floor(Math.random()*chars.length)]).join(''); if(it>=orig.length)clearInterval(si); it+=0.4; },40);
-    if(!musicPlaying)startAudio();
   });
-  el.addEventListener('mouseleave',()=>{ clearInterval(si); el.textContent=orig; stopAudio(); });
+  el.addEventListener('mouseleave',()=>{ clearInterval(si); el.textContent=orig; });
 }
 
 // ── DROPDOWN ─────────────────────────────
@@ -1190,27 +1199,676 @@ function startBigTxAlerts(){
   setTimeout(next, 12000); // first one after 12s
 }
 
-// ── AUDIO ─────────────────────────────────
-function startAudio(){
-  if(audioLocked||musicPlaying)return;
-  musicPlaying=true;audioLocked=true;
-  audioCtx=new(window.AudioContext||window.webkitAudioContext)();
-  audioCtx.resume().then(()=>{
-    masterGain=audioCtx.createGain(); masterGain.gain.setValueAtTime(0,audioCtx.currentTime); masterGain.gain.linearRampToValueAtTime(0.7,audioCtx.currentTime+1.5); masterGain.connect(audioCtx.destination);
-    const ctx=audioCtx;
-    [[40,.35,0],[40,.2,3],[80,.15,0],[120,.08,0]].forEach(([f,g,d])=>{const o=ctx.createOscillator(),gn=ctx.createGain(),lp=ctx.createBiquadFilter();o.type='sawtooth';o.frequency.value=f;o.detune.value=d;lp.type='lowpass';lp.frequency.value=300;lp.Q.value=2;gn.gain.value=g;o.connect(lp);lp.connect(gn);gn.connect(masterGain);o.start();});
-    [130.81,155.56,196,233.08].forEach((f,i)=>{const o=ctx.createOscillator(),gn=ctx.createGain(),lp=ctx.createBiquadFilter();o.type='sine';o.frequency.value=f;lp.type='lowpass';lp.frequency.value=800;gn.gain.value=.06;o.connect(lp);lp.connect(gn);gn.connect(masterGain);o.start();const lfo=ctx.createOscillator(),lg=ctx.createGain();lfo.frequency.value=.3+i*.05;lg.gain.value=.03;lfo.connect(lg);lg.connect(gn.gain);lfo.start();});
-    function pulse(){if(!musicPlaying||audioCtx!==ctx)return;const o=ctx.createOscillator(),gn=ctx.createGain();o.type='sine';o.frequency.value=[523,622,698,830][Math.floor(Math.random()*4)];gn.gain.setValueAtTime(0,ctx.currentTime);gn.gain.linearRampToValueAtTime(.04,ctx.currentTime+.3);gn.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+2.5);o.connect(gn);gn.connect(masterGain);o.start();o.stop(ctx.currentTime+2.5);setTimeout(pulse,1800+Math.random()*3000);}
-    function kick(){if(!musicPlaying||audioCtx!==ctx)return;const o=ctx.createOscillator(),gn=ctx.createGain();o.frequency.setValueAtTime(100,ctx.currentTime);o.frequency.exponentialRampToValueAtTime(30,ctx.currentTime+.3);gn.gain.setValueAtTime(.5,ctx.currentTime);gn.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.4);o.connect(gn);gn.connect(masterGain);o.start();o.stop(ctx.currentTime+.4);setTimeout(kick,2000);}
-    function hihat(){if(!musicPlaying||audioCtx!==ctx)return;const buf=ctx.createBuffer(1,ctx.sampleRate*.05,ctx.sampleRate);const d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;const src=ctx.createBufferSource(),hpf=ctx.createBiquadFilter(),gn=ctx.createGain();src.buffer=buf;hpf.type='highpass';hpf.frequency.value=8000;gn.gain.value=.04;src.connect(hpf);hpf.connect(gn);gn.connect(masterGain);src.start();setTimeout(hihat,500);}
-    setTimeout(pulse,1200);setTimeout(kick,500);setTimeout(hihat,250);
-    audioLocked=false;
+// ══════════════════════════════════════════════
+// GOV OFFICIAL DASHBOARD
+// ══════════════════════════════════════════════
+
+// ── OFFICIAL PROFILE DATA ─────────────────────
+const OFFICIAL_PROFILE = {
+  name: 'Sh. Rajiv Kumar Sharma',
+  role: 'Principal Secretary, Public Works Department · Uttar Pradesh',
+  govId: 'UP-PWD-2019-001',
+  wallet: 'ALGO:NKAG...7X21',
+  fundsManaged: '₹35,000 Cr',
+  txnsSigned: 47,
+};
+
+// ── MULTISIG CONFIG ───────────────────────────
+const MSIG_CONFIG = {
+  version: 1,
+  threshold: 3,
+  msigAddress: 'MSIG7XALG3FVKRD2PWNTQYMHZUOE6B4NCJKSDAXP9RQILVWB5TEKCQ7YXI',
+
+  algrBalance: '₹35,000 Cr',
+  signatories: [
+    { name: 'Sh. T.V. Somanathan',   role: 'Finance Secretary, GoI',           wallet: 'ALGO:TVSM...4F12', govId: 'GOI-MOF-FS-001', isSelf: false },
+    { name: 'Sh. Ajay Seth',          role: 'Secretary, DEA',                   wallet: 'ALGO:ASTH...7B33', govId: 'GOI-DEA-001',    isSelf: false },
+    { name: 'Sh. Rajiv Kumar Sharma', role: 'Principal Secretary, PWD · UP',    wallet: 'ALGO:NKAG...7X21', govId: 'UP-PWD-2019-001',isSelf: true  },
+    { name: 'Smt. Vandana Garg',      role: 'Joint Secretary, MoF',             wallet: 'ALGO:VGRG...2C88', govId: 'GOI-MOF-JS-003', isSelf: false },
+    { name: 'Sh. Rajiv Gauba',        role: 'Cabinet Secretary, GoI',           wallet: 'ALGO:RGBA...5D22', govId: 'GOI-CAB-001',    isSelf: false },
+  ],
+};
+
+// ── PENDING TRANSACTIONS DATA ─────────────────
+const PENDING_TXS = [
+  {
+    id: 'PTX-001',
+    project: 'NH-58 Road Widening Phase 2',
+    sector: '🏗️ Infrastructure',
+    recipient: { name: 'NHAI Regional Office UP', wallet: 'ALGO:NHAI...3B22', govId: 'GOI-NHAI-UP-007' },
+    amount: '₹840 Cr',
+    amountRaw: 840,
+    date: '13 Mar 2025', time: '10:15 IST',
+    note: 'Tranche 2 disbursement for NH-58 widening contract batch-B',
+    signaturesGiven: [
+      { name: 'Sh. T.V. Somanathan', wallet: 'ALGO:TVSM...4F12', signedAt: '13 Mar 2025 · 09:40 IST' },
+      { name: 'Sh. Ajay Seth',        wallet: 'ALGO:ASTH...7B33', signedAt: '13 Mar 2025 · 09:58 IST' },
+    ],
+    signaturesNeeded: ['Sh. Rajiv Kumar Sharma (YOU)', 'Smt. Vandana Garg', 'Sh. Rajiv Gauba'],
+    threshold: 3, total: 5,
+    txType: 'axfer', asaId: '812673920',
+    firstValid: 9182741, lastValid: 9183741,
+    genesisHash: 'wGHE2P...Mw==',
+    youSigned: false,
+  },
+  {
+    id: 'PTX-002',
+    project: 'Gorakhpur Link Expressway — Land Acquisition',
+    sector: '🏗️ Infrastructure',
+    recipient: { name: 'UP Revenue Dept. (Land Comp.)', wallet: 'ALGO:UPRD...9C44', govId: 'UP-REV-2021-003' },
+    amount: '₹1,200 Cr',
+    amountRaw: 1200,
+    date: '12 Mar 2025', time: '16:30 IST',
+    note: 'Land compensation fund for Gorakhpur link expressway Phase-1',
+    signaturesGiven: [
+      { name: 'Sh. Rajiv Gauba', wallet: 'ALGO:RGBA...5D22', signedAt: '12 Mar 2025 · 15:45 IST' },
+    ],
+    signaturesNeeded: ['Sh. T.V. Somanathan', 'Sh. Ajay Seth', 'Sh. Rajiv Kumar Sharma (YOU)', 'Smt. Vandana Garg'],
+    threshold: 3, total: 5,
+    txType: 'axfer', asaId: '812673920',
+    firstValid: 9181200, lastValid: 9182200,
+    genesisHash: 'wGHE2P...Mw==',
+    youSigned: false,
+  },
+  {
+    id: 'PTX-003',
+    project: 'Smart City Road Network Phase-2 · Lucknow',
+    sector: '🏗️ Infrastructure',
+    recipient: { name: 'Lucknow Smart City Ltd.', wallet: 'ALGO:LSCL...7F11', govId: 'UP-CORP-2022-014' },
+    amount: '₹320 Cr',
+    amountRaw: 320,
+    date: '11 Mar 2025', time: '14:00 IST',
+    note: 'Q4 milestone payment — road sensors + CCTV integration batch',
+    signaturesGiven: [
+      { name: 'Sh. T.V. Somanathan', wallet: 'ALGO:TVSM...4F12', signedAt: '11 Mar 2025 · 13:20 IST' },
+      { name: 'Smt. Vandana Garg',   wallet: 'ALGO:VGRG...2C88', signedAt: '11 Mar 2025 · 13:55 IST' },
+    ],
+    signaturesNeeded: ['Sh. Rajiv Kumar Sharma (YOU)', 'Sh. Ajay Seth'],
+    threshold: 3, total: 5,
+    txType: 'axfer', asaId: '812673920',
+    firstValid: 9180500, lastValid: 9181500,
+    genesisHash: 'wGHE2P...Mw==',
+    youSigned: false,
+  },
+];
+
+// ── OFFICIAL TX HISTORY ───────────────────────
+const OFF_TX_HISTORY = [
+  { hash:'0x4f9a...2c81', project:'Purvanchal Expressway Phase-3 · Tranche 1', recipient:'UPEIDA Ltd', amount:'₹350 Cr', date:'10 Mar 2025', time:'14:32 IST', status:'confirmed' },
+  { hash:'0x7e2b...5d94', project:'NH Division Expansion · Batch A', recipient:'NHAI Regional UP', amount:'₹280 Cr', date:'08 Mar 2025', time:'11:15 IST', status:'confirmed' },
+  { hash:'0x3c1d...9f22', project:'Agra-Lucknow Expressway Widening', recipient:'UPEIDA Ltd', amount:'₹190 Cr', date:'06 Mar 2025', time:'16:45 IST', status:'confirmed' },
+  { hash:'0x8a3f...1b99', project:'Urban Road Connectivity · Phase 1', recipient:'LDA (Lucknow Dev Auth)', amount:'₹95 Cr', date:'04 Mar 2025', time:'10:00 IST', status:'confirmed' },
+  { hash:'0x2d8c...4e71', project:'Flyover Construction · Ring Road Node-4', recipient:'IL&FS Engineering Ltd', amount:'₹412 Cr', date:'01 Mar 2025', time:'15:20 IST', status:'confirmed' },
+  { hash:'0x9f1a...7c33', project:'Bridge Repair · Gomti River (Batch)', recipient:'UP Bridges Corp.', amount:'₹67 Cr', date:'28 Feb 2025', time:'12:05 IST', status:'confirmed' },
+  { hash:'0x5b2e...8d14', project:'Smart City Road Network Phase-1 Final', recipient:'Lucknow Smart City Ltd.', amount:'₹180 Cr', date:'25 Feb 2025', time:'09:30 IST', status:'confirmed' },
+];
+
+let signingTxId = null;
+
+// ── RENDER OFFICIAL DASHBOARD ─────────────────
+function renderOfficialDash() {
+  // Hero
+  document.getElementById('offHeroName').textContent = OFFICIAL_PROFILE.name;
+  document.getElementById('offHeroRole').textContent = OFFICIAL_PROFILE.role;
+  document.getElementById('offHeroGovId').textContent = OFFICIAL_PROFILE.govId;
+  document.getElementById('offHeroWallet').textContent = OFFICIAL_PROFILE.wallet;
+  document.getElementById('offStatFunds').textContent = OFFICIAL_PROFILE.fundsManaged;
+  document.getElementById('offStatPending').textContent = PENDING_TXS.filter(t=>!t.youSigned).length;
+  document.getElementById('offStatSigned').textContent = OFFICIAL_PROFILE.txnsSigned;
+
+  // Msig wallet
+  const cfg = MSIG_CONFIG;
+  const threshold = cfg.threshold, total = cfg.signatories.length;
+  document.getElementById('msigThreshold').textContent = threshold+'-of-'+total;
+  document.getElementById('msigThresholdInline').textContent = threshold+' required';
+  document.getElementById('msigAddress').textContent = cfg.msigAddress;
+  document.getElementById('msigAlgrBalance').textContent = cfg.algrBalance;
+  document.getElementById('msigSignatoryCount').textContent = '('+total+' co-signers)';
+  document.getElementById('propThresholdNote').textContent = threshold;
+
+  // Signatories list
+  const sigList = document.getElementById('msigSignatoriesList');
+  sigList.innerHTML = '';
+  cfg.signatories.forEach((s, i) => {
+    const div = document.createElement('div');
+    div.style.cssText = 'background:'+(s.isSelf?'#0d1a0d':'#111')+';border:1px solid '+(s.isSelf?'#4ade8033':'var(--border)')+';border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:12px;';
+    div.innerHTML = `
+      <div style="width:28px;height:28px;background:#1a1a1a;border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:var(--text-dim);flex-shrink:0;">${i+1}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;font-weight:700;${s.isSelf?'color:#4ade80;':''}">${s.name}${s.isSelf?' <span style="font-size:9px;background:#0a2010;border:1px solid #4ade8033;border-radius:4px;padding:1px 6px;color:#4ade80;font-weight:600;vertical-align:middle;">YOU</span>':''}</div>
+        <div style="font-size:10px;color:var(--text-dim);font-family:'DM Mono',monospace;margin-top:2px;">${s.role}</div>
+        <div style="font-size:9px;color:var(--red);font-family:'DM Mono',monospace;margin-top:2px;">${s.wallet} &nbsp;·&nbsp; ${s.govId}</div>
+      </div>
+    `;
+    sigList.appendChild(div);
+  });
+
+  // Pending txns
+  renderPendingTxs();
+
+  // Tx history
+  const histEl = document.getElementById('offTxHistoryRows');
+  histEl.innerHTML = OFF_TX_HISTORY.map(t => `
+    <div style="display:grid;grid-template-columns:1fr 1.5fr 1fr 1fr 1fr;padding:13px 18px;border-bottom:1px solid #0d0d0d;font-size:12px;align-items:center;transition:background 0.15s;cursor:pointer;${parseInt(t.amount.replace(/[^0-9]/g,''))>100?'border-left:3px solid var(--red);':''}" onmouseover="this.style.background='#1a1a1a'" onmouseout="this.style.background='transparent'">
+      <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--red);">${t.hash}</div>
+      <div>
+        <div style="font-size:11px;font-weight:600;">${t.project}</div>
+        <div style="font-size:9px;color:var(--text-dim);font-family:'DM Mono',monospace;margin-top:2px;">→ ${t.recipient}</div>
+      </div>
+      <div style="font-weight:800;">${t.amount}</div>
+      <div style="font-size:10px;color:var(--text-dim);font-family:'DM Mono',monospace;">${t.date}<br>${t.time}</div>
+      <div><span class="tx-status-badge confirmed">⬤ Confirmed</span></div>
+    </div>
+  `).join('');
+}
+
+function renderPendingTxs() {
+  const pending = PENDING_TXS;
+  document.getElementById('pendingCount').textContent = pending.filter(t=>!t.youSigned).length + ' pending';
+  document.getElementById('offStatPending').textContent = pending.filter(t=>!t.youSigned).length;
+  const container = document.getElementById('pendingTxList');
+  container.innerHTML = '';
+  pending.forEach(tx => {
+    const sigsDone = tx.signaturesGiven.length;
+    const sigsNeeded = tx.threshold;
+    const pct = Math.round((sigsDone / sigsNeeded) * 100);
+    const youSigned = tx.youSigned;
+    const card = document.createElement('div');
+    card.style.cssText = 'background:'+(youSigned?'#0a0a0a':'#0c0c0c')+';border:1px solid '+(youSigned?'#4ade8033':'#ff2d2d22')+';border-radius:16px;overflow:hidden;';
+    card.innerHTML = `
+      <!-- Card header -->
+      <div style="padding:16px 20px 12px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+        <div style="flex:1;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+            <div style="font-size:11px;font-weight:700;background:${youSigned?'#0a2010':'#1a0808'};border:1px solid ${youSigned?'#4ade8033':'#ff2d2d33'};color:${youSigned?'#4ade80':'var(--red)'};border-radius:6px;padding:2px 8px;font-family:'DM Mono',monospace;">${youSigned?'✓ Signed':'⏳ Awaiting Your Signature'}</div>
+            <div style="font-size:10px;color:var(--text-dim);font-family:'DM Mono',monospace;">${tx.sector}</div>
+          </div>
+          <div style="font-size:15px;font-weight:800;letter-spacing:-0.3px;margin-bottom:4px;">${tx.project}</div>
+          <div style="font-size:10px;color:var(--text-dim);font-family:'DM Mono',monospace;">Proposed ${tx.date} · ${tx.time}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;color:var(--red);">${tx.amount}</div>
+          <div style="font-size:9px;color:var(--text-dim);font-family:'DM Mono',monospace;margin-top:2px;">ALGR transfer</div>
+        </div>
+      </div>
+
+      <!-- Recipient -->
+      <div style="margin:0 20px 12px;background:#111;border:1px solid var(--border);border-radius:10px;padding:10px 14px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div>
+          <div style="font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:2px;text-transform:uppercase;letter-spacing:1px;">Recipient</div>
+          <div style="font-size:11px;font-weight:700;">${tx.recipient.name}</div>
+          <div style="font-size:9px;color:var(--red);font-family:'DM Mono',monospace;margin-top:1px;">${tx.recipient.wallet}</div>
+        </div>
+        <div>
+          <div style="font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:2px;text-transform:uppercase;letter-spacing:1px;">Gov ID</div>
+          <div style="font-size:11px;font-weight:700;font-family:'DM Mono',monospace;">${tx.recipient.govId}</div>
+          <div style="font-size:9px;color:var(--text-dim);font-family:'DM Mono',monospace;margin-top:1px;">Note: ${tx.note.slice(0,40)}...</div>
+        </div>
+      </div>
+
+      <!-- Signature progress -->
+      <div style="padding:0 20px 12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <div style="font-size:10px;color:var(--text-dim);font-family:'DM Mono',monospace;">Signatures: <span style="color:var(--white);font-weight:700;">${sigsDone}/${sigsNeeded} required</span></div>
+          <div style="font-size:10px;color:var(--text-dim);font-family:'DM Mono',monospace;">${pct}% complete</div>
+        </div>
+        <div style="height:4px;background:#1a1a1a;border-radius:2px;margin-bottom:10px;">
+          <div style="height:100%;width:${pct}%;background:${pct>=100?'#4ade80':'var(--red)'};border-radius:2px;transition:width 0.6s ease;"></div>
+        </div>
+        <!-- Who signed -->
+        <div style="display:flex;flex-direction:column;gap:5px;">
+          ${tx.signaturesGiven.map(s=>`
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:#0a2010;border:1px solid #4ade8022;border-radius:8px;">
+              <div style="display:flex;align-items:center;gap:7px;">
+                <span style="color:#4ade80;font-size:12px;">✓</span>
+                <span style="font-size:11px;font-weight:600;">${s.name}</span>
+                <span style="font-size:9px;color:#4ade8088;font-family:'DM Mono',monospace;">${s.wallet}</span>
+              </div>
+              <span style="font-size:9px;color:#4ade80;font-family:'DM Mono',monospace;">${s.signedAt}</span>
+            </div>
+          `).join('')}
+          ${tx.signaturesNeeded.map(n=>`
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:#111;border:1px solid #ff2d2d11;border-radius:8px;">
+              <div style="display:flex;align-items:center;gap:7px;">
+                <span style="color:#ff2d2d66;font-size:12px;">◯</span>
+                <span style="font-size:11px;font-weight:600;color:var(--text-dim);">${n}</span>
+              </div>
+              <span style="font-size:9px;color:#555;font-family:'DM Mono',monospace;">Awaiting...</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <!-- Action button -->
+      <div style="padding:0 20px 18px;">
+        ${youSigned
+          ? `<div style="text-align:center;padding:10px;background:#0a2010;border:1px solid #4ade8033;border-radius:10px;font-size:12px;color:#4ade80;font-family:'DM Mono',monospace;font-weight:700;">✓ You have signed this transaction</div>`
+          : `<button onclick="openSignModal('${tx.id}')" style="width:100%;background:var(--red);border:none;border-radius:10px;padding:12px;color:white;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background 0.2s;" onmouseover="this.style.background='#cc2424'" onmouseout="this.style.background='var(--red)'">
+            <span style="font-size:16px;">✍️</span> Sign with Pera Wallet
+          </button>`
+        }
+      </div>
+    `;
+    container.appendChild(card);
   });
 }
-function stopAudio(){
-  if(!musicPlaying)return;musicPlaying=false;
-  if(audioCtx&&masterGain){const ctx=audioCtx;masterGain.gain.cancelScheduledValues(ctx.currentTime);masterGain.gain.setValueAtTime(masterGain.gain.value,ctx.currentTime);masterGain.gain.linearRampToValueAtTime(0,ctx.currentTime+0.6);setTimeout(()=>{if(audioCtx===ctx){ctx.close().catch(()=>{});audioCtx=null;masterGain=null;}},700);}
+
+// ── SIGN MODAL ────────────────────────────────
+function openSignModal(txId) {
+  signingTxId = txId;
+  const tx = PENDING_TXS.find(t => t.id === txId);
+  if (!tx) return;
+  document.getElementById('signConfirmDetails').innerHTML = `
+    <div style="color:var(--white);margin-bottom:8px;font-weight:700;font-size:13px;">${tx.project}</div>
+    <div>Amount: <span style="color:var(--red);font-weight:700;">${tx.amount}</span> ALGR</div>
+    <div>Recipient: <span style="color:var(--white);">${tx.recipient.name}</span></div>
+    <div>Wallet: <span style="color:var(--red);">${tx.recipient.wallet}</span></div>
+    <div>Gov ID: <span style="color:var(--white);">${tx.recipient.govId}</span></div>
+    <div>TX ID: <span style="color:var(--white);">${tx.id}</span></div>
+    <div>Threshold: <span style="color:var(--white);">${tx.threshold}-of-${tx.total}</span></div>
+    <div>Signed so far: <span style="color:#4ade80;font-weight:700;">${tx.signaturesGiven.length}</span></div>
+  `;
+  document.getElementById('signConfirmModal').style.display = 'flex';
 }
+
+function confirmSign() {
+  const tx = PENDING_TXS.find(t => t.id === signingTxId);
+  if (!tx) return;
+  document.getElementById('signConfirmModal').style.display = 'none';
+  // Mark as signed (frontend only — backend will do real Ed25519 signing via Pera SDK)
+  tx.youSigned = true;
+  tx.signaturesGiven.push({
+    name: OFFICIAL_PROFILE.name,
+    wallet: OFFICIAL_PROFILE.wallet,
+    signedAt: '13 Mar 2025 · ' + new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) + ' IST'
+  });
+  tx.signaturesNeeded = tx.signaturesNeeded.filter(n => !n.includes('YOU'));
+  renderPendingTxs();
+  // Show success toast
+  showOffToast('✓ Signature submitted to multisig pool');
+}
+
+// ── PROPOSE MODAL ────────────────────────────
+function openProposeModal() {
+  document.getElementById('proposeTxModal').style.display = 'flex';
+}
+
+function submitPropose() {
+  const recipient = document.getElementById('propRecipient').value.trim();
+  const amount    = document.getElementById('propAmount').value.trim();
+  const project   = document.getElementById('propProject').value.trim();
+  const sector    = document.getElementById('propSector').value;
+  const note      = document.getElementById('propNote').value.trim() || 'No memo';
+  if (!recipient || !amount || !project) {
+    alert('Please fill Recipient, Amount, and Project fields.'); return;
+  }
+  document.getElementById('proposeTxModal').style.display = 'none';
+
+  // Build new pending tx matching PENDING_TXS structure
+  const newId = 'PTX-' + String(PENDING_TXS.length + 1).padStart(3, '0');
+  const amtNum = parseFloat(amount.replace(/[^0-9.]/g,''));
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+  const timeStr = now.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' }) + ' IST';
+  const signatories = MSIG_CONFIG.signatories;
+  const otherNames = signatories.filter(s => !s.isSelf).map(s => s.name);
+
+  PENDING_TXS.unshift({
+    id: newId,
+    project,
+    sector: '📋 ' + sector,
+    recipient: {
+      name: recipient.length > 20 ? recipient.slice(0, 18) + '...' : recipient,
+      wallet: recipient.startsWith('ALGO:') ? recipient : 'ALGO:' + recipient.slice(0,8) + '...',
+      govId: 'PENDING-VERIFY'
+    },
+    amount: '₹' + (amtNum >= 10000000 ? (amtNum/10000000).toFixed(0) + ' Cr' : amtNum.toLocaleString('en-IN')),
+    amountRaw: amtNum,
+    date: dateStr, time: timeStr,
+    note,
+    signaturesGiven: [
+      { name: OFFICIAL_PROFILE.name, wallet: OFFICIAL_PROFILE.wallet, signedAt: dateStr + ' · ' + timeStr }
+    ],
+    signaturesNeeded: otherNames.slice(0, MSIG_CONFIG.threshold - 1),
+    threshold: MSIG_CONFIG.threshold, total: MSIG_CONFIG.signatories.length,
+    txType: 'axfer', asaId: '812673920',
+    firstValid: 9182741, lastValid: 9183741,
+    genesisHash: 'wGHE2P...Mw==',
+    youSigned: true,
+  });
+
+  // Clear fields
+  document.getElementById('propRecipient').value = '';
+  document.getElementById('propAmount').value = '';
+  document.getElementById('propProject').value = '';
+  document.getElementById('propNote').value = '';
+
+  renderPendingTxs();
+  showOffToast('📤 ' + newId + ' proposed — co-signatories notified');
+  // Scroll to pending section
+  document.getElementById('pendingTxList').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Backend hook: POST /api/transactions/propose with {recipient, amount, project, sector, note, msigAddr, proposer}
+}
+
+// ── TOAST NOTIFICATION ────────────────────────
+function showOffToast(msg) {
+  let toast = document.getElementById('offToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'offToast';
+    toast.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(80px);background:#111;border:1px solid #4ade8044;border-radius:12px;padding:12px 24px;font-size:12px;font-family:"DM Mono",monospace;color:#4ade80;z-index:9998;transition:transform 0.4s cubic-bezier(0.16,1,0.3,1);white-space:nowrap;';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  requestAnimationFrame(() => { toast.style.transform = 'translateX(-50%) translateY(0)'; });
+  setTimeout(() => { toast.style.transform = 'translateX(-50%) translateY(80px)'; }, 3000);
+}
+
+// ── OFFICIAL NAV DROPDOWN ─────────────────────
+const offLogoBtn = document.getElementById('offLogoBtn');
+const offLogoWrapper = document.getElementById('offLogoWrapper');
+const offDropdown = document.getElementById('offLogoDropdown');
+offLogoBtn.addEventListener('click', e => { e.stopPropagation(); offDropdown.classList.toggle('open'); });
+document.addEventListener('click', e => { if (!offLogoWrapper.contains(e.target)) offDropdown.classList.remove('open'); });
+
+// ── OFFICIAL ALGORA TEXT SCRAMBLE ─────────────
+function initOfficialAlgoraText() {
+  const el = document.getElementById('offAlgoraText');
+  const orig = 'ALGORA', chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%';
+  el.setAttribute('data-text', orig); el.textContent = orig;
+  let si = null;
+  el.addEventListener('mouseenter', () => {
+    let iter = 0; clearInterval(si);
+    si = setInterval(() => {
+      el.textContent = orig.split('').map((c,i) => i < iter ? orig[i] : chars[Math.floor(Math.random()*chars.length)]).join('');
+      if (iter >= orig.length) clearInterval(si);
+      iter += 0.4;
+    }, 40);
+  });
+  el.addEventListener('mouseleave', () => { clearInterval(si); el.textContent = orig; });
+}
+
+// ── COPY MSIG ADDRESS ─────────────────────────
+function copyMsigAddr() {
+  navigator.clipboard.writeText(MSIG_CONFIG.msigAddress).catch(() => {});
+  const btn = document.getElementById('msigCopyBtn');
+  btn.textContent = '✓ Copied!';
+  btn.style.color = '#4ade80';
+  setTimeout(() => { btn.textContent = '📋 Copy'; btn.style.color = 'var(--text-dim)'; }, 2000);
+}
+
+// ── OFFICIAL LOGOUT (reuse same overlay but wire back correctly) ──
+function showSection(s) {
+  if (s === 'pending') { document.getElementById('pendingTxList').scrollIntoView({behavior:'smooth'}); }
+}
+
+// Patch confirmLogout for official page too
+const _origConfirmLogout = confirmLogout;
+confirmLogout = function() {
+  const pw = document.getElementById('logoutPw').value;
+  const err = document.getElementById('logoutError');
+  if (!pw.trim()) { err.style.display='block'; err.textContent='❌ Please enter your password.'; return; }
+  if (pw.length < 4) { err.style.display='block'; err.textContent='❌ Incorrect password. Try again.'; return; }
+  err.style.display='none';
+  closeAll();
+  document.getElementById('page-dashboard').style.display='none';
+  document.getElementById('page-official').style.display='none';
+  document.getElementById('page-landing').style.display='flex';
+  document.getElementById('page-auth').style.display='block';
+  document.getElementById('logoutPw').value='';
+  currentUser=null;
+};
+</script>
+
+<!-- ═══════════════════════════════════════
+     PAGE 4 — GOV OFFICIAL DASHBOARD
+═══════════════════════════════════════ -->
+<div id="page-official" style="display:none;">
+
+<!-- OFFICIAL NAV -->
+<nav id="offNav">
+  <div class="logo-wrapper" id="offLogoWrapper">
+    <div class="logo-icon" id="offLogoBtn">⬡</div>
+    <span id="offAlgoraText" style="font-size:20px;font-weight:800;letter-spacing:-0.5px;"></span>
+    <div class="logo-dropdown" id="offLogoDropdown">
+      <div class="dropdown-user">
+        <div class="dropdown-user-name" id="offNavUserName">—</div>
+        <div class="dropdown-user-id" id="offNavUserId">—</div>
+      </div>
+      <div class="dropdown-item" onclick="openProfile()"><div class="icon">👤</div> My Profile</div>
+      <div class="dropdown-item" onclick="openNotifications()"><div class="icon">🔔</div> Notifications</div>
+      <div class="dropdown-item" onclick="openHelp()"><div class="icon">❓</div> Help & Support</div>
+      <div class="dropdown-divider"></div>
+      <div class="dropdown-item danger" onclick="openLogout()"><div class="icon" style="background:var(--red-dim);border-color:#ff2d2d44;">🚪</div> Log Out</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div style="display:inline-flex;align-items:center;gap:6px;background:#fbbf2411;border:1px solid #fbbf2433;color:#fbbf24;padding:6px 14px;border-radius:100px;font-size:11px;font-weight:700;font-family:'DM Mono',monospace;letter-spacing:0.5px;">
+      <span style="width:6px;height:6px;background:#fbbf24;border-radius:50%;animation:pulse 1.5s infinite;display:inline-block;"></span>
+      OFFICIAL PORTAL
+    </div>
+    <button class="nav-cta" onclick="openProposeModal()">+ Propose Transaction</button>
+  </div>
+</nav>
+
+<!-- OFFICIAL HERO STRIP -->
+<div id="offHero" style="padding:48px 48px 0;background:var(--black);border-bottom:1px solid var(--border);position:relative;overflow:hidden;">
+  <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.012) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.012) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;"></div>
+  <div style="position:absolute;top:0;right:0;width:40%;height:100%;background:radial-gradient(ellipse at 80% 40%,#fbbf2408 0%,transparent 60%);pointer-events:none;"></div>
+  <div style="position:relative;z-index:2;display:grid;grid-template-columns:1fr auto;gap:32px;align-items:start;">
+    <!-- Left: identity -->
+    <div>
+      <div style="display:inline-flex;align-items:center;gap:8px;background:var(--red-dim);border:1px solid #ff2d2d44;color:var(--red);padding:5px 14px;border-radius:100px;font-size:10px;font-weight:700;letter-spacing:2px;font-family:'DM Mono',monospace;margin-bottom:20px;">
+        <span class="dot"></span> LIVE · ALGORAND MAINNET
+      </div>
+      <h1 style="font-size:clamp(28px,4vw,48px);font-weight:800;letter-spacing:-1.5px;line-height:1.1;margin-bottom:10px;" id="offHeroName">—</h1>
+      <div style="font-size:13px;color:var(--text-dim);font-family:'DM Mono',monospace;margin-bottom:20px;" id="offHeroRole">—</div>
+      <!-- Gov ID + Wallet row -->
+      <div style="display:flex;flex-wrap:wrap;gap:10px;padding-bottom:32px;">
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 16px;display:flex;align-items:center;gap:8px;">
+          <span style="font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:1px;">Gov ID</span>
+          <span style="font-size:12px;font-weight:700;color:var(--white);font-family:'DM Mono',monospace;" id="offHeroGovId">—</span>
+        </div>
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 16px;display:flex;align-items:center;gap:8px;">
+          <span style="font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:1px;">Personal Wallet</span>
+          <span style="font-size:12px;font-weight:700;color:var(--red);font-family:'DM Mono',monospace;" id="offHeroWallet">—</span>
+        </div>
+        <div style="background:#081a0d;border:1px solid #4ade8033;border-radius:10px;padding:10px 16px;display:flex;align-items:center;gap:8px;">
+          <span style="width:6px;height:6px;background:#4ade80;border-radius:50%;animation:pulse 2s infinite;"></span>
+          <span style="font-size:12px;font-weight:700;color:#4ade80;font-family:'DM Mono',monospace;">Aadhar Verified · Pera Wallet Connected</span>
+        </div>
+      </div>
+    </div>
+    <!-- Right: quick stats -->
+    <div style="display:flex;flex-direction:column;gap:10px;min-width:200px;">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 22px;">
+        <div style="font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Funds Managed</div>
+        <div style="font-size:24px;font-weight:800;letter-spacing:-0.5px;color:var(--red);" id="offStatFunds">—</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 22px;">
+        <div style="font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Pending Approvals</div>
+        <div style="font-size:24px;font-weight:800;letter-spacing:-0.5px;" id="offStatPending">—</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 22px;">
+        <div style="font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Txns Signed</div>
+        <div style="font-size:24px;font-weight:800;letter-spacing:-0.5px;color:#4ade80;" id="offStatSigned">—</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN OFFICIAL BODY -->
+<div style="padding:40px 48px;background:var(--black);display:flex;flex-direction:column;gap:24px;" id="offMainGrid">
+
+  <!-- LEFT COLUMN -->
+  <div style="display:flex;flex-direction:column;gap:24px;">
+
+    <!-- ── MULTISIG WALLET CARD ── -->
+    <div id="offMsigCard" style="background:#0c0c0c;border:1px solid #ff2d2d33;border-radius:20px;overflow:hidden;">
+      <!-- Card header -->
+      <div style="padding:22px 26px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <div style="font-size:10px;color:var(--red);letter-spacing:3px;text-transform:uppercase;font-family:'DM Mono',monospace;font-weight:600;margin-bottom:8px;">Algorand Multisig Account</div>
+          <div style="font-size:18px;font-weight:800;letter-spacing:-0.5px;">Multisig Wallet</div>
+          <div style="font-size:11px;color:var(--text-dim);font-family:'DM Mono',monospace;margin-top:4px;">Version 1 · Threshold <span id="msigThreshold" style="color:var(--white);font-weight:700;">3-of-5</span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+          <div style="background:#081a0d;border:1px solid #4ade8033;border-radius:8px;padding:6px 12px;font-size:10px;color:#4ade80;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:5px;">
+            <span style="width:5px;height:5px;background:#4ade80;border-radius:50%;animation:pulse 2s infinite;"></span>Active
+          </div>
+          <div style="font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;">Algorand Mainnet</div>
+        </div>
+      </div>
+      <!-- Multisig address -->
+      <div style="padding:16px 26px;border-bottom:1px solid var(--border);background:#0a0a0a;">
+        <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;font-family:'DM Mono',monospace;margin-bottom:6px;">Multisig Account Address</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div style="font-size:12px;font-family:'DM Mono',monospace;color:var(--red);word-break:break-all;" id="msigAddress">—</div>
+          <button onclick="copyMsigAddr()" style="background:#1a1a1a;border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:10px;color:var(--text-dim);font-family:'DM Mono',monospace;cursor:pointer;white-space:nowrap;transition:all 0.2s;" id="msigCopyBtn">📋 Copy</button>
+        </div>
+      </div>
+      <!-- Balances -->
+      <div style="padding:18px 26px;border-bottom:1px solid var(--border);">
+        <div style="display:inline-block;">
+          <div style="font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">ALGR Tokens (₹) — Funds Held in Wallet</div>
+          <div style="font-size:28px;font-weight:800;letter-spacing:-1px;color:var(--red);" id="msigAlgrBalance">—</div>
+          <div style="font-size:10px;color:var(--text-dim);font-family:'DM Mono',monospace;margin-top:4px;">1 ALGR = ₹1 &nbsp;·&nbsp; Algorand Standard Asset #812673920</div>
+        </div>
+      </div>
+      <!-- Signatories -->
+      <div style="padding:18px 26px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <div style="font-size:12px;font-weight:700;">Co-Signatories <span style="color:var(--text-dim);font-weight:400;font-family:'DM Mono',monospace;font-size:10px;" id="msigSignatoryCount"></span></div>
+          <div style="font-size:10px;color:var(--text-dim);font-family:'DM Mono',monospace;">Threshold: <span style="color:var(--white);font-weight:700;" id="msigThresholdInline">3 required</span></div>
+        </div>
+        <div id="msigSignatoriesList" style="display:flex;flex-direction:column;gap:8px;"></div>
+      </div>
+    </div>
+
+    <!-- ── PENDING TRANSACTIONS (Awaiting Signatures) ── -->
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div>
+          <div style="font-size:10px;color:var(--red);letter-spacing:3px;text-transform:uppercase;font-family:'DM Mono',monospace;font-weight:600;margin-bottom:6px;">Action Required</div>
+          <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;">Pending Approvals</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="background:var(--red-dim);border:1px solid var(--red);border-radius:100px;padding:4px 14px;font-size:11px;color:var(--red);font-family:'DM Mono',monospace;font-weight:700;" id="pendingCount">0 pending</div>
+          <button onclick="openProposeModal()" style="background:var(--red);border:none;border-radius:10px;padding:9px 16px;color:white;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:7px;transition:background 0.2s;white-space:nowrap;" onmouseover="this.style.background='#cc2424'" onmouseout="this.style.background='var(--red)'">📤 Propose New</button>
+        </div>
+      </div>
+      <div id="pendingTxList" style="display:flex;flex-direction:column;gap:12px;"></div>
+    </div>
+
+    <!-- ── OFFICIAL TX HISTORY ── -->
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div>
+          <div style="font-size:10px;color:var(--red);letter-spacing:3px;text-transform:uppercase;font-family:'DM Mono',monospace;font-weight:600;margin-bottom:6px;">Ledger</div>
+          <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;">My Transaction History</div>
+          <div style="font-size:11px;color:var(--text-dim);font-family:'DM Mono',monospace;margin-top:4px;">All fund movements associated with my wallet · <span style="color:#4ade80;">⬤</span> Live on Algorand</div>
+        </div>
+        <button onclick="alert('Export to CSV — backend pending')" style="background:#1a1a1a;border:1px solid var(--border);border-radius:10px;padding:9px 16px;color:var(--white);font-family:'Syne',sans-serif;font-weight:600;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:7px;transition:all 0.2s;white-space:nowrap;flex-shrink:0;" onmouseover="this.style.borderColor='#ff2d2d44'" onmouseout="this.style.borderColor='var(--border)'">📥 Export Report</button>
+      </div>
+      <div class="tx-table-wrap">
+        <div style="display:grid;grid-template-columns:1fr 1.5fr 1fr 1fr 1fr;padding:12px 18px;border-bottom:1px solid var(--border);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;font-family:'DM Mono',monospace;background:#0f0f0f;">
+          <div>TX Hash</div><div>Project / Recipient</div><div>Amount</div><div>Date & Time</div><div>Status</div>
+        </div>
+        <div id="offTxHistoryRows"></div>
+      </div>
+    </div>
+
+  </div><!-- end left col -->
+
+</div><!-- end off main grid -->
+</div><!-- end page-official -->
+
+<!-- ── PROPOSE TRANSACTION MODAL ── -->
+<div id="proposeTxModal" class="overlay" style="z-index:5000;">
+  <div class="overlay-card" style="width:min(560px,96vw);max-height:92vh;overflow-y:auto;">
+    <div class="overlay-header">
+      <div>
+        <div class="overlay-title">📤 Propose New Transaction</div>
+        <div class="overlay-sub">Initiates a multisig signing request · All co-signatories will be notified</div>
+      </div>
+      <div class="close-btn" onclick="document.getElementById('proposeTxModal').style.display='none'">✕</div>
+    </div>
+    <div style="padding:24px 28px;display:flex;flex-direction:column;gap:14px;">
+
+      <div class="form-field">
+        <label class="form-label">Recipient Wallet Address <span style="color:var(--red)">*</span></label>
+        <input type="text" id="propRecipient" class="form-input" placeholder="ALGO:XXXX...XXXX (58-char Algorand address)">
+      </div>
+      <div class="form-row">
+        <div class="form-field">
+          <label class="form-label">Amount (ALGR = ₹) <span style="color:var(--red)">*</span></label>
+          <input type="number" id="propAmount" class="form-input" placeholder="e.g. 250000000 (= ₹250 Cr)" min="1">
+        </div>
+        <div class="form-field">
+          <label class="form-label">Transaction Fee (ALGO)</label>
+          <input type="text" class="form-input" value="0.001" readonly style="color:var(--muted);">
+        </div>
+      </div>
+      <div class="form-field">
+        <label class="form-label">Project / Purpose <span style="color:var(--red)">*</span></label>
+        <input type="text" id="propProject" class="form-input" placeholder="e.g. NH-58 Road Widening Phase 2">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Sector</label>
+        <select id="propSector" class="form-input">
+          <option>Infrastructure</option>
+          <option>Health</option>
+          <option>Education</option>
+          <option>Agriculture</option>
+          <option>Social Welfare</option>
+          <option>Defence</option>
+          <option>Science & Technology</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label class="form-label">Note / Memo (on-chain)</label>
+        <textarea id="propNote" class="form-input" rows="2" style="resize:none;" placeholder="Brief on-chain note — max 1000 bytes"></textarea>
+      </div>
+
+      <div style="background:#1a0808;border:1px solid #ff2d2d33;border-radius:10px;padding:12px 14px;font-size:11px;color:#aa5555;font-family:'DM Mono',monospace;line-height:1.7;">
+        ⚠️ Proposing does not broadcast to Algorand yet. The transaction is stored as unsigned. All <span style="color:var(--white);" id="propThresholdNote">3</span> required co-signatories must sign before it is submitted to the network.
+      </div>
+
+      <button onclick="submitPropose()" style="width:100%;background:var(--red);border:none;border-radius:10px;padding:14px;color:white;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;">
+        Propose Transaction →
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── SIGN CONFIRMATION MODAL ── -->
+<div id="signConfirmModal" class="overlay" style="z-index:5001;">
+  <div class="overlay-card" style="width:min(480px,96vw);">
+    <div class="overlay-header">
+      <div><div class="overlay-title">✍️ Sign Transaction</div><div class="overlay-sub">Your Pera Wallet will be prompted</div></div>
+      <div class="close-btn" onclick="document.getElementById('signConfirmModal').style.display='none'">✕</div>
+    </div>
+    <div style="padding:24px 28px;display:flex;flex-direction:column;gap:16px;">
+      <div id="signConfirmDetails" style="background:#0a0a0a;border:1px solid var(--border);border-radius:12px;padding:16px;font-family:'DM Mono',monospace;font-size:11px;line-height:2;color:var(--text-dim);"></div>
+      <div style="background:#0a1a0d;border:1px solid #4ade8033;border-radius:10px;padding:12px 14px;font-size:11px;color:#4ade80;font-family:'DM Mono',monospace;line-height:1.7;">
+        ✓ Signing with your Ed25519 key. The partial signature will be stored — transaction broadcasts only when threshold is reached.
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button onclick="document.getElementById('signConfirmModal').style.display='none'" style="flex:1;padding:13px;background:#1a1a1a;border:1px solid var(--border);border-radius:10px;color:var(--text-dim);font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer;">Cancel</button>
+        <button onclick="confirmSign()" style="flex:2;padding:13px;background:var(--red);border:none;border-radius:10px;color:white;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer;">Sign with Pera Wallet →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Close modal on backdrop click — elements exist here since HTML is above
+document.getElementById('proposeTxModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('proposeTxModal')) document.getElementById('proposeTxModal').style.display='none';
+});
+document.getElementById('signConfirmModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('signConfirmModal')) document.getElementById('signConfirmModal').style.display='none';
+});
 </script>
 </body>
 </html>
