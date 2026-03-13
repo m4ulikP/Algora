@@ -10,6 +10,12 @@
     rel="stylesheet">
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = 'https://YOUR_PROJECT_ID.supabase.co';
+    const SUPABASE_ANON_KEY = 'YOUR_ANON_PUBLIC_KEY';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  </script>
   <script>
     const firebaseConfig = {
       apiKey: "AIzaSyAQz166fs2F5SQrXkJzUBPtv8jEYH9BWYA",
@@ -2930,7 +2936,7 @@
           <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:4px;">Warning — You are logging out
           </div>
           <div style="font-size:11px;color:#aa5555;font-family:'DM Mono',monospace;line-height:1.7;">Your session will
-            be terminated. You will need to re-verify with Aadhar OTP to log back in.</div>
+            be terminated. You will need to log in again with your phone number and password.</div>
         </div>
       </div>
       <div style="padding:28px 32px;display:flex;flex-direction:column;gap:20px;">
@@ -3017,22 +3023,29 @@
       btn.classList.remove('loading');
       btn.disabled = false;
 
+      // Show overlay FIRST so recaptcha-container is visible in the DOM
       document.getElementById('otpOverlay').style.display = 'flex';
       setupOtpBoxes();
 
-      // Always create a fresh reCAPTCHA before sending
-      freshRecaptcha();
-
-      sendOtpToPhone(fullPhone)
-        .then(result => {
-          window.confirmationResult = result;
-          startOtpTimer(30);
-          setTimeout(() => document.getElementById('otp0').focus(), 150);
-        })
-        .catch(err => {
-          alert('Failed to send OTP: ' + err.message);
-          closeOtp();
-        });
+      // Give the DOM a moment to render before initialising reCAPTCHA
+      setTimeout(() => {
+        freshRecaptcha();
+        sendOtpToPhone(fullPhone)
+          .then(result => {
+            window.confirmationResult = result;
+            startOtpTimer(30);
+            setTimeout(() => document.getElementById('otp0').focus(), 150);
+          })
+          .catch(err => {
+            // Reset resend link so user can try again immediately
+            const resendLink = document.getElementById('resendLink');
+            resendLink.classList.remove('disabled');
+            document.getElementById('otpTimer').style.display = 'none';
+            clearInterval(otpTimerInterval);
+            document.getElementById('otpErrorMsg').textContent = '❌ Failed to send OTP: ' + err.message;
+            document.getElementById('otpErrorMsg').style.display = 'block';
+          });
+      }, 100);
     }
 
     function closeOtp() {
@@ -3168,7 +3181,10 @@
     }
 
     function resendOtp() {
-      showResendToast();
+      // Disable resend immediately to prevent double-clicks
+      const resendLink = document.getElementById('resendLink');
+      resendLink.classList.add('disabled');
+
       for (let i = 0; i < 6; i++) {
         const box = document.getElementById('otp' + i);
         box.value = ''; box.classList.remove('filled', 'error');
@@ -3178,15 +3194,24 @@
       document.getElementById('otpVerifyBtn').classList.remove('loading');
       document.getElementById('otpVerifyBtn').disabled = false;
 
-      freshRecaptcha();
-      const phone = '+91' + document.getElementById('otpPhoneDisplay').textContent.replace(/\D/g, '');
-      sendOtpToPhone(phone)
-        .then(result => {
-          window.confirmationResult = result;
-          startOtpTimer(30);
-          setTimeout(() => document.getElementById('otp0').focus(), 150);
-        })
-        .catch(err => alert('Resend failed: ' + err.message));
+      setTimeout(() => {
+        freshRecaptcha();
+        const phone = '+91' + document.getElementById('otpPhoneDisplay').textContent.replace(/\D/g, '');
+        sendOtpToPhone(phone)
+          .then(result => {
+            window.confirmationResult = result;
+            startOtpTimer(30);
+            showResendToast();
+            setTimeout(() => document.getElementById('otp0').focus(), 150);
+          })
+          .catch(err => {
+            // Re-enable resend on failure
+            resendLink.classList.remove('disabled');
+            document.getElementById('otpTimer').style.display = 'none';
+            document.getElementById('otpErrorMsg').textContent = '❌ Resend failed: ' + err.message;
+            document.getElementById('otpErrorMsg').style.display = 'block';
+          });
+      }, 100);
     }
 
     function showResendToast() {
@@ -3269,11 +3294,8 @@
       const phone = document.querySelector('#formLogin .phone-input').value.trim();
       if (!pw) { alert('Please enter your password.'); return; }
       if (!phone) { alert('Please enter your phone number.'); return; }
-      const formattedPhone = phone.replace(/(\d{5})(\d{5})/, '$1-$2');
-      openOtp(formattedPhone, () => {
-        currentUser = { name: 'User', role: loginRole };
-        enterDashboard();
-      });
+      currentUser = { name: 'User', role: loginRole };
+      enterDashboard();
     }
     function enterDashboard() {
       document.getElementById('page-landing').style.display = 'none';
